@@ -1,0 +1,32 @@
+apply plugin: 'groovy'
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.10'
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'http://dl.bintray.com/gesellix/docker-utils' }
+}
+
+dependencies {
+    compile localGroovy()
+    compile 'de.gesellix:docker-client:2016-04-11T22-50-38'
+    compile 'org.slf4j:slf4j-api:1.7.5'
+    compile 'org.slf4j:slf4j-simple:1.6.4'
+}
+
+task runScript(type: JavaExec) {
+    description 'Run Groovy script'
+
+    main = 'cosmos.astronaut.Launch'
+
+    classpath = sourceSets.main.runtimeClasspath
+
+    def cosmosUrl = project.hasProperty('cosmosUrl') ? project.property('cosmosUrl') : ''
+    def tableName = project.hasProperty('cosmosTable') ? project.property('cosmosTable') : ''
+
+    args cosmosUrl, tableName
+}
+
+defaultTasks 'runScript'
