@@ -1,5 +1,7 @@
 package cosmos.cosmonaut
+
 import de.gesellix.docker.client.DockerAsyncCallback
+import de.gesellix.docker.client.DockerClient
 import de.gesellix.docker.client.DockerClientImpl
 import groovy.json.JsonSlurper
 
@@ -13,8 +15,9 @@ def cosmosTable = args[1]
 System.setProperty("docker.cert.path", "/Users/${System.getProperty('user.name')}/.docker/machine/machines/dev")
 
 class Cosmonaut implements DockerAsyncCallback {
+    DockerClient dockerClient
+
     def events = []
-    def dockerClient = new DockerClientImpl(System.env.DOCKER_HOST)
     static final COSMOS_PARAM_CONFIG_MODE = 'configMode'
     static final COSMOS_PARAM_SERVICE_NAME = 'serviceName'
     static final COSMOS_PARAM_PREDICATE = 'predicate'
@@ -25,51 +28,77 @@ class Cosmonaut implements DockerAsyncCallback {
         events << event
         println event
 
-        performRequiredUpdates(event)
+        performRequiredUpdate(event)
     }
 
     def launch() {
-        dockerClient.events(this)
+        getDockerClient().events(this)
     }
 
-    def performRequiredUpdates (event) {
+    def shouldPerformUpdate(object) {
+        def eventType = object?.Type
+        def eventStatus = object?.status
+        def image = object?.from
+        def undesirableStatuses = ['die', 'destroy']
+
+        if (eventType != 'container' || (image && image.contains('weave'))
+            || undesirableStatuses.contains(eventStatus)) {
+            return false
+        }
+
+        return true
+    }
+
+    def performRequiredUpdate(event) {
         def slurper = new JsonSlurper()
         def object = slurper.parseText(event?.toString())
 
-        def eventType = object?.Type
-
-        if (eventType != 'container') {
+        if (!shouldPerformUpdate(object)) {
             return
         }
 
         def eventStatus = object?.status
         def containerId = object?.id
+        def inspectionContent = inspectContainer(containerId)?.content
 
-        def inspectionContent = dockerClient.inspectContainer(containerId).content
+        if (!inspectionContent) {
+            return
+        }
+
         def serviceAttrs = serviceAttrs(inspectionContent)
 
         println serviceAttrs.toMapString()
 
         switch(eventStatus) {
-            case "start":
+            case 'start':
                 startEvent()
                 break
-            case ["stop", "destroy"]:
-                stopOrDestroyEvent()
+            case ['stop', 'kill']:
+                stopEvent()
                 break
             default:
                 return noOp()
         }
     }
 
+    def inspectContainer(containerId) {
+        def content = null
+        try {
+            content = getDockerClient().inspectContainer(containerId)
+        } catch (Exception e) {
+            println e.getMessage()
+        }
+        return content
+    }
+
     def startEvent () {}
 
-    def stopOrDestroyEvent () {}
+    def stopEvent () {}
 
     def noOp () {}
 
     def weaveDnsEntries() {
-        def entries = "weave status dns".execute().text
+        def entries = 'weave status dns'.execute().text
 
         println entries
         
@@ -77,10 +106,6 @@ class Cosmonaut implements DockerAsyncCallback {
     }
 
     def serviceAttrs(inspectionContent) {
-
-        // What if docker inspection fails?
-        // Also, how do we perform updates only for containers we are interested in?
-
         def containerMapArray = containerArrayMap(inspectionContent)
         def serviceEnvMap = serviceEnvMap(inspectionContent)
 
@@ -110,7 +135,7 @@ class Cosmonaut implements DockerAsyncCallback {
         }
 
         def envMap = envTuples
-                .collectEntries { tuple -> [tuple.first, tuple.second.toString().toLowerCase()] }
+                .collectEntries { tuple -> [tuple.first, tuple.second] }
                 .findAll { envToServiceKeysMap.keySet().contains it.key }
                 .collectEntries { k, v -> [envToServiceKeysMap.get(k), v] }
 
@@ -120,9 +145,9 @@ class Cosmonaut implements DockerAsyncCallback {
     def isServiceEnvValid(env) {
         def allowedConfigModeVals = ['host', 'path']
 
-        return allowedConfigModeVals.contains(env.get(COSMOS_PARAM_CONFIG_MODE))
+        return allowedConfigModeVals.contains(env.get(COSMOS_PARAM_CONFIG_MODE).toLowerCase())
     }
 }
 
-Cosmonaut cosmonaut = new Cosmonaut()
+Cosmonaut cosmonaut = new Cosmonaut(dockerClient: new DockerClientImpl(System.env.DOCKER_HOST))
 cosmonaut.launch()

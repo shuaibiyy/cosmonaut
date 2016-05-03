@@ -1,10 +1,13 @@
 package cosmos.cosmonaut
+
+import de.gesellix.docker.client.DockerClient
 import spock.lang.Specification
 
 class LauncherSpec extends Specification {
 
     def "Service environments are extracted from docker inspection content"() {
         given:
+        def dockerClient = Mock(DockerClient)
         def configModeVal = randomAlphanumeric(7)
         def serviceNameVal = randomAlphanumeric(7)
         def predicateVal = randomAlphanumeric(7)
@@ -21,7 +24,7 @@ class LauncherSpec extends Specification {
         ])
 
         when:
-        def serviceEnvMap = new Cosmonaut().serviceEnvMap(inspectionContent)
+        def serviceEnvMap = new Cosmonaut(dockerClient: dockerClient).serviceEnvMap(inspectionContent)
 
         then:
         serviceEnvMap == expectedServiceEnvMap
@@ -29,13 +32,14 @@ class LauncherSpec extends Specification {
 
     def "Container attributes are extracted from docker inspection content"() {
         given:
+        def dockerClient = Mock(DockerClient)
         def containerId = randomAlphanumeric(14)
         def IpAddress = randomAlphanumeric(7)
         def inspectionContent = someInspectionContent([], containerId, IpAddress)
         def expectedContainerMapArray = [containers:[[id: containerId, ip: IpAddress]]]
 
         when:
-        def containerMapArray = new Cosmonaut().containerArrayMap(inspectionContent)
+        def containerMapArray = new Cosmonaut(dockerClient: dockerClient).containerArrayMap(inspectionContent)
 
         then:
         containerMapArray == expectedContainerMapArray

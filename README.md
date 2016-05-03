@@ -1,4 +1,4 @@
-# Astronaut
+# Cosmonaut
 
 A Cosmos client written in Groovy.
 
