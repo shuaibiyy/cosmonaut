@@ -65,13 +65,11 @@ class Cosmonaut implements DockerAsyncCallback {
             return
         }
 
-        def serviceAttrs = serviceAttrs(inspectionContent)
-
-        println serviceAttrs.toMapString()
+        waitForWeaveRegistration()
 
         switch(eventStatus) {
             case 'start':
-                startEvent()
+                startEvent(inspectionContent)
                 break
             case ['stop', 'kill']:
                 stopEvent()
@@ -79,6 +77,10 @@ class Cosmonaut implements DockerAsyncCallback {
             default:
                 return noOp()
         }
+    }
+
+    def waitForWeaveRegistration() {
+        sleep 1000
     }
 
     def inspectContainer(containerId) {
@@ -91,7 +93,14 @@ class Cosmonaut implements DockerAsyncCallback {
         return content
     }
 
-    def startEvent () {}
+    def startEvent (inspectionContent) {
+        def runningServices = servicesFromDns(weaveDnsEntries())
+        def newServiceAttrs = serviceAttrs(inspectionContent)
+
+        Map cosmosPayload = runningServices + newServiceAttrs
+
+        println cosmosPayload.toMapString()
+    }
 
     def stopEvent () {}
 
@@ -100,9 +109,18 @@ class Cosmonaut implements DockerAsyncCallback {
     def weaveDnsEntries() {
         def entries = 'weave status dns'.execute().text
 
-        println entries
-        
         return entries
+    }
+
+    def servicesFromDns(String entries) {
+        def entriesArray = entries.split('\\r?\\n')
+
+        def services = entriesArray.collect {
+            def tokens = it.tokenize()
+            return [serviceName: tokens[0], id: tokens[2], ip: tokens[1]]
+        }
+
+        return [runningServices: services]
     }
 
     def serviceAttrs(inspectionContent) {
@@ -117,7 +135,11 @@ class Cosmonaut implements DockerAsyncCallback {
     def containerArrayMap(inspectionContent) {
         def ipAddress = inspectionContent.NetworkSettings.IPAddress
         def containerId = inspectionContent.Id
-        return [containers:[[id: containerId, ip: ipAddress]]]
+        return [containers: [[id: shortenContainerId(containerId), ip: ipAddress]]]
+    }
+
+    def shortenContainerId(id) {
+        return id.substring(0, 12)
     }
 
     def serviceEnvMap(inspectionContent) {
