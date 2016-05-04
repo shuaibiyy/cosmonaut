@@ -5,9 +5,10 @@ import spock.lang.Specification
 
 class LauncherSpec extends Specification {
 
+    def dockerClient = Mock(DockerClient)
+
     def "Service environments are extracted from docker inspection content"() {
         given:
-        def dockerClient = Mock(DockerClient)
         def configModeVal = randomAlphanumeric(7)
         def serviceNameVal = randomAlphanumeric(7)
         def predicateVal = randomAlphanumeric(7)
@@ -32,14 +33,15 @@ class LauncherSpec extends Specification {
 
     def "Container attributes are extracted from docker inspection content"() {
         given:
-        def dockerClient = Mock(DockerClient)
         def containerId = randomAlphanumeric(12)
-        def IpAddress = randomAlphanumeric(7)
-        def inspectionContent = someInspectionContent([], containerId, IpAddress)
-        def expectedContainerMapArray = [containers:[[id: containerId, ip: IpAddress]]]
+        def ipAddress = randomAlphanumeric(9)
+        def serviceName = randomAlphanumeric(9)
+        def inspectionContent = someInspectionContent([], containerId, ipAddress)
+        def dnsEntries = someDnsEntries([[serviceName: serviceName, id: containerId, ip: ipAddress]])
+        def expectedContainerMapArray = [containers:[[id: containerId, ip: ipAddress]]]
 
         when:
-        def containerMapArray = new Cosmonaut(dockerClient: dockerClient).containerArrayMap(inspectionContent)
+        def containerMapArray = new Cosmonaut(dockerClient: dockerClient).containerArrayMap(inspectionContent, dnsEntries)
 
         then:
         containerMapArray == expectedContainerMapArray
@@ -47,7 +49,6 @@ class LauncherSpec extends Specification {
 
     def "Running services are retrieved from Weave DNS entries"() {
         given:
-        def dockerClient = Mock(DockerClient)
         def serviceName1 = randomAlphanumeric(7)
         def serviceName2 = randomAlphanumeric(7)
         def serviceName3 = randomAlphanumeric(7)
@@ -57,36 +58,46 @@ class LauncherSpec extends Specification {
         def containerId1 = randomAlphanumeric(7)
         def containerId2 = randomAlphanumeric(7)
         def containerId3 = randomAlphanumeric(7)
-        def weaveDnsEntries = someWeaveDnsEntries(serviceName1, serviceName2, serviceName3,
-                ipAddress1, ipAddress2, ipAddress3, containerId1, containerId2, containerId3)
-        def expectedRunningServices = [
-            runningServices:[
-                [serviceName:serviceName1, id:containerId1, ip:ipAddress1],
-                [serviceName:serviceName2, id:containerId2, ip:ipAddress2],
-                [serviceName:serviceName3, id:containerId3, ip:ipAddress3]
-            ]
+        def services = [
+                [serviceName: serviceName1, id: containerId1, ip: ipAddress1],
+                [serviceName: serviceName2, id: containerId2, ip: ipAddress2],
+                [serviceName: serviceName3, id: containerId3, ip: ipAddress3]
         ]
+        def dnsEntries = someDnsEntries(services)
+        def expectedRunningServices = [runningServices: services]
 
         when:
-        def runningServices = new Cosmonaut(dockerClient: dockerClient).servicesFromDns(weaveDnsEntries)
+        def runningServices = new Cosmonaut(dockerClient: dockerClient).runningServices(dnsEntries)
 
         then:
         runningServices == expectedRunningServices
     }
 
+    def "A containers weave IP address can be found"() {
+        given:
+        def containerId = randomAlphanumeric(12)
+        def serviceName = randomAlphanumeric(9)
+        def expectedIp = randomAlphanumeric(9)
+        def dnsEntries = someDnsEntries([[serviceName: serviceName, ip: expectedIp, id: containerId]])
+
+        when:
+        def ip = new Cosmonaut(dockerClient: dockerClient).findContainerWeaveIp(containerId, dnsEntries)
+
+        then:
+        ip == expectedIp
+    }
+
     def randomAlphanumeric = { int n ->
         new Random().with {
-            def characters = (('A'..'Z')+('0'..'9')).join()
-            (1..n).collect { characters[ nextInt( characters.length() ) ] }.join()
+            def characters = (('A'..'Z')+('0'..'9')).join("")
+            (1..n).collect { characters[ nextInt( characters.length() ) ] }.join("")
         }
     }
 
-    def someWeaveDnsEntries(serviceName1, serviceName2, serviceName3,
-                            ipAddress1, ipAddress2, ipAddress3,
-                            containerId1, containerId2, containerId3) {
-        return  "${serviceName1}           ${ipAddress1}        ${containerId1} 52:b9:66:dc:96:3c\n" +
-                "${serviceName2}           ${ipAddress2}        ${containerId2} 52:b9:66:dc:96:3c\n" +
-                "${serviceName3}           ${ipAddress3}        ${containerId3} 52:b9:66:dc:96:3c\n"
+    def someDnsEntries(services) {
+        return services.collect {
+            "${it['serviceName']}           ${it['ip']}        ${it['id']} 52:b9:66:dc:96:3c"
+        }.join("\n")
     }
 
     def someInspectionContent(serviceEnv = [], id = "", ipAdress = "") {
