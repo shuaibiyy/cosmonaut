@@ -1,15 +1,19 @@
 package cosmos.cosmonaut
 import de.gesellix.docker.client.DockerAsyncCallback
 import de.gesellix.docker.client.DockerClientImpl
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
-import groovyx.net.http.HTTPBuilder
 
-if (args[0].isEmpty() || args[1].isEmpty()) {
+if (args[1].isEmpty() || args[2].isEmpty()) {
+    println "You need to supply values for these properties: 1) cosmosUrl 2) cosmosTable"
+    println "You can supply them via the gradle command:"
+    println "./gradlew -PcosmosUrl=<url> -P cosmosTable=<table_name>"
     System.exit(2)
 }
 
-def cosmosUrl = args[0]
-def cosmosTable = args[1]
+def scriptsDir = args[0]
+def cosmosUrl = args[1]
+def cosmosTable = args[2]
 
 System.setProperty("docker.cert.path", "/Users/${System.getProperty('user.name')}/.docker/machine/machines/dev")
 
@@ -17,6 +21,7 @@ class Cosmonaut implements DockerAsyncCallback {
     def dockerClient
     def cosmosUrl
     def cosmosTable
+    def scriptsDir
     def events = []
 
     static final COSMOS_PARAM_CONFIG_MODE = 'configMode'
@@ -40,7 +45,7 @@ class Cosmonaut implements DockerAsyncCallback {
         def eventType = object?.Type
         def eventStatus = object?.status
         def image = object?.from
-        def uninterestedStatuses = ['die', 'destroy']
+        def uninterestedStatuses = ['die', 'destroy', 'kill']
 
         if (eventType != 'container' || (image && image.contains('weave'))
             || uninterestedStatuses.contains(eventStatus)) {
@@ -72,7 +77,7 @@ class Cosmonaut implements DockerAsyncCallback {
             case 'start':
                 startEvent(inspectionContent)
                 break
-            case ['stop', 'kill']:
+            case ['stop']:
                 stopEvent()
                 break
             default:
@@ -94,30 +99,20 @@ class Cosmonaut implements DockerAsyncCallback {
         return content
     }
 
-    def getConfigFile(payload) {
-        def http = new HTTPBuilder(cosmosUrl)
+    def updateHAProxy(payload) {
+        def updateScript = "$scriptsDir/update_haproxy.sh"
+        def command = [updateScript, cosmosUrl, JsonOutput.toJson(payload)]
+        def process = command.execute()
 
-        http.request(POST, JSON) { req ->
-            body = payload
-
-            response.success = { resp, json ->
-                println resp.status
-            }
-
-            response.failure = { resp ->
-                println resp.status
-            }
-        }
+        process.waitForProcessOutput(System.out, System.err)
     }
 
     def startEvent(inspectionContent) {
-//        getConfigFile(startEventPayload(inspectionContent))
-
-        println startEventPayload(inspectionContent).inspect()
+        updateHAProxy(startEventPayload(inspectionContent))
     }
 
     def stopEvent() {
-        getConfigFile(stopEventPayload())
+        updateHAProxy(stopEventPayload())
     }
 
     def noOp() {}
@@ -210,5 +205,5 @@ class Cosmonaut implements DockerAsyncCallback {
 }
 
 Cosmonaut cosmonaut = new Cosmonaut(dockerClient: new DockerClientImpl(System.env.DOCKER_HOST),
-        cosmosUrl: cosmosUrl, cosmosTable: cosmosTable)
+        cosmosUrl: cosmosUrl, cosmosTable: cosmosTable, scriptsDir: scriptsDir)
 cosmonaut.launch()

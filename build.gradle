@@ -27,10 +27,11 @@ task runScript(type: JavaExec) {
 
     classpath = sourceSets.main.runtimeClasspath
 
+    def scriptsDir = "$projectDir/scripts"
     def cosmosUrl = project.hasProperty('cosmosUrl') ? project.property('cosmosUrl') : ''
     def tableName = project.hasProperty('cosmosTable') ? project.property('cosmosTable') : ''
 
-    args cosmosUrl, tableName
+    args scriptsDir, cosmosUrl, tableName
 }
 
 defaultTasks 'runScript'
