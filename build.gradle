@@ -20,6 +20,12 @@ dependencies {
     }
 }
 
+test {
+    reports {
+        html.enabled = true
+    }
+}
+
 task runScript(type: JavaExec) {
     description 'Run Groovy script'
 
@@ -30,8 +36,9 @@ task runScript(type: JavaExec) {
     def scriptsDir = "$projectDir/scripts"
     def cosmosUrl = project.hasProperty('cosmosUrl') ? project.property('cosmosUrl') : ''
     def tableName = project.hasProperty('cosmosTable') ? project.property('cosmosTable') : ''
+    def keyword = project.hasProperty('keyword') ? project.property('keyword') : ''
 
-    args scriptsDir, cosmosUrl, tableName
+    args scriptsDir, cosmosUrl, tableName, keyword
 }
 
 defaultTasks 'runScript'

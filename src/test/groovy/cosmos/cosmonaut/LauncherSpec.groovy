@@ -1,13 +1,14 @@
 package cosmos.cosmonaut
 
 import de.gesellix.docker.client.DockerClient
+import groovy.json.JsonSlurper
 import spock.lang.Specification
 
 class LauncherSpec extends Specification {
 
     def dockerClient = Mock(DockerClient)
 
-    def "Service environments are extracted from docker inspection content"() {
+    def "Service environments should be extractable from docker inspection content"() {
         given:
         def configModeVal = randomAlphanumeric(7)
         def serviceNameVal = randomAlphanumeric(7)
@@ -31,7 +32,7 @@ class LauncherSpec extends Specification {
         serviceEnvMap == expectedServiceEnvMap
     }
 
-    def "Container attributes are extracted from docker inspection content"() {
+    def "Container attributes should be extractable from docker inspection content"() {
         given:
         def containerId = randomAlphanumeric(12)
         def ipAddress = randomAlphanumeric(9)
@@ -47,7 +48,7 @@ class LauncherSpec extends Specification {
         containerMapArray == expectedContainerMapArray
     }
 
-    def "Running services are retrieved from Weave DNS entries"() {
+    def "Running services should be retrievable from Weave DNS entries"() {
         given:
         def serviceName1 = randomAlphanumeric(7)
         def serviceName2 = randomAlphanumeric(7)
@@ -73,7 +74,7 @@ class LauncherSpec extends Specification {
         runningServices == expectedRunningServices
     }
 
-    def "A containers weave IP address can be found"() {
+    def "A containers weave IP address should be found"() {
         given:
         def containerId = randomAlphanumeric(12)
         def serviceName = randomAlphanumeric(9)
@@ -85,6 +86,100 @@ class LauncherSpec extends Specification {
 
         then:
         ip == expectedIp
+    }
+
+    def "Update should be performed when criteria is met"() {
+        given:
+        def qualifiedEvent = '{"status":"start","id":"ea0baa6d3b79f33a79e6dcd42ed6ad6e5631beccf49e057f2cf4fd2e4fda3c6a","from":"ubuntu","Type":"container","Action":"start","Actor":{"ID":"ea0baa6d3b79f33a79e6dcd42ed6ad6e5631beccf49e057f2cf4fd2e4fda3c6a","Attributes":{"image":"ubuntu","name":"a1-meteor"}},"time":1463314019,"timeNano":1463314019626211903}'
+        def eventObject = new JsonSlurper().parseText(qualifiedEvent)
+
+        when:
+        def shouldUpdate = new Cosmonaut(dockerClient: dockerClient, keyword: 'meteor').shouldPerformUpdate(eventObject)
+
+        then:
+        shouldUpdate
+    }
+
+    def "Update should not be performed when status is not relevant"() {
+        given:
+        def unqualifiedStatusEvent = '{"status":"create","id":"3f48e288a9bde16e22dd56a7fb25c0700c7be97acfa82f58c46d8848fc5cc80f","from":"ubuntu","Type":"container","Action":"create","Actor":{"ID":"3f48e288a9bde16e22dd56a7fb25c0700c7be97acfa82f58c46d8848fc5cc80f","Attributes":{"image":"ubuntu","name":"a1-asteroid"}},"time":1463313883,"timeNano":1463313883684216171}'
+        def eventObject = new JsonSlurper().parseText(unqualifiedStatusEvent)
+
+        when:
+        def shouldUpdate = new Cosmonaut(dockerClient: dockerClient, keyword: 'asteroid').shouldPerformUpdate(eventObject)
+
+        then:
+        !shouldUpdate
+    }
+
+    def "Update should not be performed when event type is not relevant"() {
+        given:
+        def unqualifiedEventType = '{"Type":"network","Action":"connect","Actor":{"ID":"30f5d93a14eac81d999cd645782a8c8cf9ad20753d44c0b330b547c097702aab","Attributes":{"container":"3f48e288a9bde16e22dd56a7fb25c0700c7be97acfa82f58c46d8848fc5cc80f","name":"bridge","type":"bridge"}},"time":1463313883,"timeNano":1463313883704844719}'
+        def eventObject = new JsonSlurper().parseText(unqualifiedEventType)
+
+        when:
+        def shouldUpdate = new Cosmonaut(dockerClient: dockerClient, keyword: 'yamamoto').shouldPerformUpdate(eventObject)
+
+        then:
+        !shouldUpdate
+    }
+
+    def "Update should not be performed when keyword is not present in container name"() {
+        given:
+        def unqualifiedKeywordEvent ='{"status":"start","id":"3f48e288a9bde16e22dd56a7fb25c0700c7be97acfa82f58c46d8848fc5cc80f","from":"ubuntu","Type":"container","Action":"start","Actor":{"ID":"3f48e288a9bde16e22dd56a7fb25c0700c7be97acfa82f58c46d8848fc5cc80f","Attributes":{"image":"ubuntu","name":"a1-saber"}},"time":1463313883,"timeNano":1463313883978543498}'
+        def eventObject = new JsonSlurper().parseText(unqualifiedKeywordEvent)
+
+        when:
+        def shouldUpdate = new Cosmonaut(dockerClient: dockerClient, keyword: 'katekyo').shouldPerformUpdate(eventObject)
+
+        then:
+        !shouldUpdate
+    }
+
+    def "Container environment variables with required keys and allowed config mode should be valid"() {
+        given:
+        def inspectionContent = someInspectionContent([
+                "CONFIG_MODE=host",
+                "SERVICE_NAME=${randomAlphanumeric(7)}",
+                "PREDICATE=${randomAlphanumeric(7)}",
+                "COOKIE=${randomAlphanumeric(7)}",
+        ])
+
+        when:
+        def envIsValid = new Cosmonaut(dockerClient: dockerClient).isContainerEnvValid(inspectionContent, randomAlphanumeric(12))
+
+        then:
+        envIsValid
+    }
+
+    def "Container environment variables with incorrect config mode should be invalid"() {
+        given:
+        def inspectionContent = someInspectionContent([
+                "CONFIG_MODE=${randomAlphanumeric(7)}",
+                "SERVICE_NAME=${randomAlphanumeric(7)}",
+                "PREDICATE=${randomAlphanumeric(7)}",
+                "COOKIE=${randomAlphanumeric(7)}",
+        ])
+
+        when:
+        def envIsValid = new Cosmonaut(dockerClient: dockerClient).isContainerEnvValid(inspectionContent, randomAlphanumeric(12))
+
+        then:
+        !envIsValid
+    }
+
+    def "Container environment variables without required keys should be invalid"() {
+        given:
+        def inspectionContent = someInspectionContent([
+                "CONFIG_MODE=host",
+                "COOKIE=${randomAlphanumeric(7)}",
+        ])
+
+        when:
+        def envIsValid = new Cosmonaut(dockerClient: dockerClient).isContainerEnvValid(inspectionContent, randomAlphanumeric(12))
+
+        then:
+        !envIsValid
     }
 
     def randomAlphanumeric = { int n ->

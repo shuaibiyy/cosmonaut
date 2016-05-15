@@ -7,7 +7,7 @@ import groovy.json.JsonSlurper
 if (args[1].isEmpty() || args[2].isEmpty()) {
     println "You need to supply values for these properties: 1) cosmosUrl 2) cosmosTable"
     println "You can supply them via the gradle command:"
-    println "./gradlew -PcosmosUrl=<url> -P cosmosTable=<table_name>"
+    println "./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name>"
     System.exit(2)
 }
 
@@ -15,24 +15,39 @@ def scriptsDir = args[0]
 def cosmosUrl = args[1]
 def cosmosTable = args[2]
 
-System.setProperty("docker.cert.path", "/Users/${System.getProperty('user.name')}/.docker/machine/machines/dev")
+def keyword = 'asteroid'
+if (args[3].isEmpty()) {
+    println "INFO Cosmonaut: keyword property not supplied."
+    println "INFO Cosmonaut: keyword defaulting to '$keyword'."
+} else {
+    keyword = args[3]
+}
+
+System.setProperty('docker.cert.path', System.getenv('DOCKER_CERT_PATH'))
 
 class Cosmonaut implements DockerAsyncCallback {
     def dockerClient
     def cosmosUrl
     def cosmosTable
     def scriptsDir
+    String keyword
     def events = []
 
     static final COSMOS_PARAM_CONFIG_MODE = 'configMode'
     static final COSMOS_PARAM_SERVICE_NAME = 'serviceName'
     static final COSMOS_PARAM_PREDICATE = 'predicate'
     static final COSMOS_PARAM_COOKIE = 'cookie'
+    static final ENV_VAR_CONFIG_MODE = 'CONFIG_MODE'
+    static final ENV_TO_COSMOS_KEYMAP = [
+        CONFIG_MODE: COSMOS_PARAM_CONFIG_MODE,
+        SERVICE_NAME: COSMOS_PARAM_SERVICE_NAME,
+        PREDICATE: COSMOS_PARAM_PREDICATE,
+        COOKIE: COSMOS_PARAM_COOKIE
+    ]
 
     @Override
-    def onEvent (Object event) {
+    def onEvent(Object event) {
         events << event
-        println event
 
         performRequiredUpdate(event)
     }
@@ -44,11 +59,13 @@ class Cosmonaut implements DockerAsyncCallback {
     def shouldPerformUpdate(object) {
         def eventType = object?.Type
         def eventStatus = object?.status
-        def image = object?.from
-        def uninterestedStatuses = ['die', 'destroy', 'kill']
+        def containerName = object?.Actor?.Attributes?.name
+        def uninterestedStatuses = ['die', 'destroy', 'kill', 'create']
 
-        if (eventType != 'container' || (image && image.contains('weave'))
+        if (eventType != 'container'
+            || (containerName && !containerName.toString().toLowerCase().contains(keyword))
             || uninterestedStatuses.contains(eventStatus)) {
+            println "INFO Cosmonaut: No action will be taken for event received."
             return false
         }
 
@@ -63,11 +80,17 @@ class Cosmonaut implements DockerAsyncCallback {
             return
         }
 
+        println event
+
         def eventStatus = object?.status
         def containerId = object?.id
         def inspectionContent = inspectContainer(containerId)?.content
 
         if (!inspectionContent) {
+            return
+        }
+
+        if (!isContainerEnvValid(inspectionContent, containerId)) {
             return
         }
 
@@ -94,7 +117,9 @@ class Cosmonaut implements DockerAsyncCallback {
         try {
             content = dockerClient.inspectContainer(containerId)
         } catch (Exception e) {
-            println e.getMessage()
+            println "ERROR Cosmonaut: Unable to inspect container '$containerId'."
+            println "ERROR Cosmonaut: Event will be ignored."
+            println "ERROR Cosmonaut: ${e.getMessage()}"
         }
         return content
     }
@@ -177,12 +202,6 @@ class Cosmonaut implements DockerAsyncCallback {
 
     def serviceEnvMap(inspectionContent) {
         def env = inspectionContent.Config.Env
-        def envToServiceKeysMap = [
-                CONFIG_MODE: COSMOS_PARAM_CONFIG_MODE,
-                SERVICE_NAME: COSMOS_PARAM_SERVICE_NAME,
-                PREDICATE: COSMOS_PARAM_PREDICATE,
-                COOKIE: COSMOS_PARAM_COOKIE
-        ]
 
         def envTuples = env.collect { envVar ->
             def (key, val) = envVar.tokenize('=')
@@ -191,19 +210,54 @@ class Cosmonaut implements DockerAsyncCallback {
 
         def envMap = envTuples
                 .collectEntries { tuple -> [tuple.first, tuple.second] }
-                .findAll { entry -> envToServiceKeysMap.keySet().contains entry.key }
-                .collectEntries { k, v -> [envToServiceKeysMap.get(k), v] }
+                .findAll { entry -> ENV_TO_COSMOS_KEYMAP.keySet().contains entry.key }
+                .collectEntries { k, v -> [ENV_TO_COSMOS_KEYMAP.get(k), v] }
 
         return envMap
     }
 
-    def isServiceEnvValid(env) {
-        def allowedConfigModeVals = ['host', 'path']
+    def isContainerEnvValid(content, containerId) {
+        def env = serviceEnvMap(content)
+        def requiredEnvKeys = [
+            COSMOS_PARAM_CONFIG_MODE,
+            COSMOS_PARAM_SERVICE_NAME,
+            COSMOS_PARAM_PREDICATE
+        ]
+        def isValid = true
 
-        return allowedConfigModeVals.contains(env.get(COSMOS_PARAM_CONFIG_MODE).toLowerCase())
+        requiredEnvKeys.forEach {
+            if (!env.containsKey(it)) {
+                isValid = false
+                def envKey = ENV_TO_COSMOS_KEYMAP.find { v -> v.value == it }?.key
+                printMissingEnvVar(envKey, containerId)
+            }
+        }
+
+        if (isValid) {
+            isValid = isConfigModeAllowed(env[COSMOS_PARAM_CONFIG_MODE].toString().toLowerCase())
+        }
+
+        return isValid
+    }
+
+    def isConfigModeAllowed(mode) {
+        def allowedConfigModeVals = ['host', 'path']
+        def allowed = allowedConfigModeVals.contains(mode)
+
+        if (!allowed) {
+            println "ERROR Cosmonaut: '$ENV_VAR_CONFIG_MODE' environment variable has an incorrect value."
+            println "ERROR Cosmonaut: Event will be ignored."
+        }
+
+        return allowed
+    }
+
+    def printMissingEnvVar(key, containerId) {
+        println "ERROR Cosmonaut: Missing environment variable '$key' in container '$containerId'."
+        println "ERROR Cosmonaut: Event will be ignored."
     }
 }
 
-Cosmonaut cosmonaut = new Cosmonaut(dockerClient: new DockerClientImpl(System.env.DOCKER_HOST),
-        cosmosUrl: cosmosUrl, cosmosTable: cosmosTable, scriptsDir: scriptsDir)
+Cosmonaut cosmonaut = new Cosmonaut(dockerClient: new DockerClientImpl(System.getenv('DOCKER_HOST')),
+        cosmosUrl: cosmosUrl, cosmosTable: cosmosTable, scriptsDir: scriptsDir, keyword: keyword)
 cosmonaut.launch()
