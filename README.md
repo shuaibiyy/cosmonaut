@@ -31,23 +31,23 @@ Cosmonaut uses a keyword to determine if the container tied to an event is signi
 2. `git clone` this repo.
 3. Set the required `DOCKER_HOST` and optional `DOCKER_CERT_PATH` environment variables. For example:
 
-        $> export DOCKER_HOST="tcp://192.168.99.100:2376"
-        $> export DOCKER_CERT_PATH="/Users/<user>/.docker/machine/machines/dev"
+        $ export DOCKER_HOST="tcp://192.168.99.100:2376"
+        $ export DOCKER_CERT_PATH="/Users/<user>/.docker/machine/machines/dev"
 Or:
 
         $ export DOCKER_HOST=unix:///var/run/docker.sock
 4. Run:
 
-        $> ./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name>
+        $ ./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name>
 where `cosmosUrl` is the URL of your Cosmos endpoint and `cosmosTable` is the name of the DynamoDB table Cosmos will create and use to persist the state of the cosmonaut machine's services. Cosmos uses the persisted state to ensure the HAProxy config data for running services can be reproduced. Also, you can pass in a [keyword](#keyword) by running:
 
-        $> ./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name> -Pkeyword=<keyword_value>
+        $ ./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name> -Pkeyword=<keyword_value>
 
 ## Usage
 
 * Containers should be run within the weave network.
 * Containers should be run with the required environment variables, i.e. `SERVICE_NAME`, `CONFIG_MODE`, and `PREDICATE`. Here's a sample run command:
 
-        $> eval "$(weave env)"
-        $> docker run -d -ti -e CONFIG_MODE=host -e SERVICE_NAME=app1 -e PREDICATE=first.example.com -e COOKIE=JSESSIONID --name a1-asteroid ubuntu
+        $ eval "$(weave env)"
+        $ docker run -d -ti -e CONFIG_MODE=host -e SERVICE_NAME=app1 -e PREDICATE=first.example.com -e COOKIE=JSESSIONID --name a1-asteroid ubuntu
 You can find an explanation of the environment variables and their uses [here](https://github.com/shuaibiyy/cosmos/blob/master/index.js#L6).

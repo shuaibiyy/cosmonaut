@@ -145,11 +145,11 @@ class Cosmonaut implements DockerAsyncCallback {
     def startEventPayload(inspectionContent) {
         def dnsEntries = weaveDnsEntries()
 
-        return [tableName: cosmosTable] + runningServices(dnsEntries) + candidateService(inspectionContent, dnsEntries)
+        return [table: cosmosTable] + runningServices(dnsEntries) + candidateService(inspectionContent, dnsEntries)
     }
 
     def stopEventPayload() {
-        return [tableName: cosmosTable] + runningServices(weaveDnsEntries())
+        return [table: cosmosTable] + runningServices(weaveDnsEntries())
     }
 
     def weaveDnsEntries() {
@@ -167,7 +167,7 @@ class Cosmonaut implements DockerAsyncCallback {
     }
 
     def runningServices(String dnsEntries) {
-        return [runningServices: servicesFromDns(dnsEntries)]
+        return [running: servicesFromDns(dnsEntries)]
     }
 
     def servicesFromDns(String dnsEntries) {
@@ -187,7 +187,7 @@ class Cosmonaut implements DockerAsyncCallback {
 
         Map serviceAttrs = serviceEnvMap + containerMapArray
 
-        return [candidateServices: [serviceAttrs]]
+        return [candidates: [serviceAttrs]]
     }
 
     def containerArrayMap(inspectionContent, String dnsEntries) {

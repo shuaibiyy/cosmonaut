@@ -65,7 +65,7 @@ class LauncherSpec extends Specification {
                 [serviceName: serviceName3, id: containerId3, ip: ipAddress3]
         ]
         def dnsEntries = someDnsEntries(services)
-        def expectedRunningServices = [runningServices: services]
+        def expectedRunningServices = [running: services]
 
         when:
         def runningServices = new Cosmonaut(dockerClient: dockerClient).runningServices(dnsEntries)
