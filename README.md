@@ -1,8 +1,6 @@
 # Cosmonaut
 
-<img src="https://rawgit.com/shuaibiyy/cosmonaut/master/cosmonaut.png" width="100" align="right"/>
-
-A [Cosmos](https://github.com/shuaibiyy/cosmos) client written in Groovy. Cosmonaut monitors containers, and maintains a HAProxy config based on their state.
+Cosmonaut monitors containers, and maintains a HAProxy config based on their states. Cosmonaut works with [Cosmos](https://github.com/shuaibiyy/cosmos) to achieve this.
 
 ## How does it work?
 
