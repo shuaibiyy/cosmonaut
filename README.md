@@ -43,9 +43,26 @@ where `cosmosUrl` is the URL of your Cosmos endpoint and `cosmosTable` is the na
 
 ## Usage
 
-* Containers should be run within the weave network.
-* Containers should be run with the required environment variables, i.e. `SERVICE_NAME`, `CONFIG_MODE`, and `PREDICATE`. Here's a sample run command:
+Simply run a docker container with the required environment variables:
+
+        $ docker run -d -ti -e CONFIG_MODE=[host|path] -e SERVICE_NAME=<service_name> -e PREDICATE=<predicate> -e COOKIE=<cookie_name> --name <container_name> <image>
+
+E.g.:
 
         $ eval "$(weave env)"
         $ docker run -d -ti -e CONFIG_MODE=host -e SERVICE_NAME=app1 -e PREDICATE=first.example.com -e COOKIE=JSESSIONID --name a1-asteroid ubuntu
-You can find an explanation of the environment variables and their uses [here](https://github.com/shuaibiyy/cosmos/blob/master/index.js#L6).
+
+Note that Cosmonaut requires Weave to be used as an overlay network on the host, and containers must be run within the Weave network, hence the `eval $(weave env)` command.
+
+### Environment Variables
+
+* CONFIG_MODE: type of routing. It can be either `path` or `host`.
+        1. In `path` mode, the URL path is used to determine which backend to forward the request to.
+        2. In `host` mode, the HTTP host header is used to determine which backend to forward the request to.
+        Defaults to `host` mode.
+* SERVICE_NAME: name of service the container belongs to.
+* PREDICATE: value used along with mode to determine which service a request will be forwarded to.
+        1. `path` mode example: `acl <cluster> url_beg /<predicate>`.
+        2. `host` mode example: `acl <cluster> hdr(host) -i <predicate>`.
+* COOKIE: name of cookie to be used for sticky sessions. If not defined, sticky sessions will not be configured.
+* PORT: port number where the service on the container is listening on.

@@ -48,7 +48,6 @@ class Cosmonaut implements DockerAsyncCallback {
     @Override
     def onEvent(Object event) {
         events << event
-
         performRequiredUpdate(event)
     }
 
@@ -56,6 +55,14 @@ class Cosmonaut implements DockerAsyncCallback {
         dockerClient.events(this)
     }
 
+    /**
+     * Determine if an update should be performed based on:
+     *  - Event status
+     *  - Event container type
+     *  - Keyword
+     * @param object docker event object.
+     * @return boolean whether or not update should be performed.
+     */
     def shouldPerformUpdate(object) {
         def eventType = object?.Type
         def eventStatus = object?.status
@@ -68,7 +75,6 @@ class Cosmonaut implements DockerAsyncCallback {
             println "INFO Cosmonaut: No action will be taken for event received."
             return false
         }
-
         return true
     }
 
@@ -108,10 +114,19 @@ class Cosmonaut implements DockerAsyncCallback {
         }
     }
 
+    /**
+     * When a container is started, weave needs some time to configure the network.
+     * @return void
+     */
     def waitForWeaveToRegisterEvent() {
         sleep 1000
     }
 
+    /**
+     * Run `docker inspect <container_id>` command.
+     * @param containerId container id.
+     * @return object result of docker inspection.
+     */
     def inspectContainer(containerId) {
         def content = null
         try {
@@ -128,8 +143,7 @@ class Cosmonaut implements DockerAsyncCallback {
         def updateScript = "$scriptsDir/update_haproxy.sh"
         def command = [updateScript, cosmosUrl, JsonOutput.toJson(payload)]
         def process = command.execute()
-
-        process.waitForProcessOutput(System.out, System.err)
+        process.waitForProcessOutput((OutputStream)System.out, System.err)
     }
 
     def startEvent(inspectionContent) {
@@ -144,7 +158,6 @@ class Cosmonaut implements DockerAsyncCallback {
 
     def startEventPayload(inspectionContent) {
         def dnsEntries = weaveDnsEntries()
-
         return [table: cosmosTable] + runningServices(dnsEntries) + candidateService(inspectionContent, dnsEntries)
     }
 
@@ -152,59 +165,95 @@ class Cosmonaut implements DockerAsyncCallback {
         return [table: cosmosTable] + runningServices(weaveDnsEntries())
     }
 
+    /**
+     * Run `weave status dns` command.
+     * @return String string of weave dns entries.
+     */
     def weaveDnsEntries() {
         return 'weave status dns'.execute().text
     }
 
+    /**
+     * Obtain ip address of the event's container from weave dns entries.
+     * @param containerId container id.
+     * @param dnsEntries weave dns entries.
+     * @return String ip address.
+     */
     def findContainerWeaveIp(containerId, String dnsEntries) {
-        def servicesMapArray = servicesFromDns(dnsEntries)
-
-        def ip = servicesMapArray.findAll { serviceMap ->
-            serviceMap['id'] == containerId
-        }.first().ip
-
+        def mapArr = servicesFromDns(dnsEntries)
+        def ip = mapArr.findAll { it['id'] == containerId }.first().ip
         return ip
     }
 
+    /**
+     * Get services running in the weave network.
+     * @param dnsEntries weave dns entries.
+     * @return Map single-valued map of array of running services.
+     */
     def runningServices(String dnsEntries) {
         return [running: servicesFromDns(dnsEntries)]
     }
 
+    /**
+     * Get services in the weave network.
+     * @param dnsEntries weave dns entries.
+     * @return Array array of maps of services.
+     */
     def servicesFromDns(String dnsEntries) {
-        def entriesArray = dnsEntries.split('\\r?\\n')
-
-        def servicesMapArray = entriesArray.collect { entry ->
+        def entriesArr = dnsEntries.split('\\r?\\n')
+        def arr = entriesArr.collect { entry ->
             def tokens = entry.tokenize()
             return [serviceName: tokens[0], id: tokens[2], ip: tokens[1]]
         }
-
-        return servicesMapArray
+        return arr
     }
 
+    /**
+     * Get services(s) from container(s) that initiated the docker event,
+     * along with service information extracted from container environment variables.
+     * @param inspectionContent result of `docker inspect` command.
+     * @param dnsEntries weave dns entries.
+     * @return Map map of array of services.
+     */
     def candidateService(inspectionContent, String dnsEntries) {
-        def containerMapArray = containerArrayMap(inspectionContent, dnsEntries)
+        def mapArr = containerMapArr(inspectionContent, dnsEntries)
         def serviceEnvMap = serviceEnvMap(inspectionContent)
-
-        Map serviceAttrs = serviceEnvMap + containerMapArray
-
+        Map serviceAttrs = serviceEnvMap + mapArr
         return [candidates: [serviceAttrs]]
     }
 
-    def containerArrayMap(inspectionContent, String dnsEntries) {
+    /**
+     * Get container(s) that is/are the subject of the docker event.
+     * @param inspectionContent
+     * @param dnsEntries
+     * @return Map map of array of containers.
+     */
+    def containerMapArr(inspectionContent, String dnsEntries) {
         def containerId = shortenContainerId(inspectionContent.Id)
         def ipAddress = findContainerWeaveIp(containerId, dnsEntries)
         return [containers: [[id: containerId, ip: ipAddress]]]
     }
 
+    /**
+     * Truncate container id to a length that matches docker's shortened format.
+     * @param id container id
+     * @return String
+     */
     def shortenContainerId(id) {
         return id.substring(0, 12)
     }
 
+    /**
+     * Compute a map of the container's environment variables,
+     * with keys mapped to their cosmos payload counterparts e.g. CONFIG_MODE -> configMode.
+     * @param inspectionContent result of `docker inspect` command.
+     * @return Map map of environment variables formatted for Cosmos payload.
+     */
     def serviceEnvMap(inspectionContent) {
         def env = inspectionContent.Config.Env
 
-        def envTuples = env.collect { envVar ->
-            def (key, val) = envVar.tokenize('=')
+        def envTuples = env.collect {
+            def (key, val) = it.tokenize('=')
             return new Tuple2(key, val)
         }
 
@@ -212,20 +261,25 @@ class Cosmonaut implements DockerAsyncCallback {
                 .collectEntries { tuple -> [tuple.first, tuple.second] }
                 .findAll { entry -> ENV_TO_COSMOS_KEYMAP.keySet().contains entry.key }
                 .collectEntries { k, v -> [ENV_TO_COSMOS_KEYMAP.get(k), v] }
-
         return envMap
     }
 
+    /**
+     * Verify that required container environment variables exist and are only set to allowed values.
+     * @param content result of `docker inspect` command.
+     * @param containerId id of container that triggered docker event.
+     * @return boolean whether or not the environment variables are valid.
+     */
     def isContainerEnvValid(content, containerId) {
         def env = serviceEnvMap(content)
-        def requiredEnvKeys = [
+        def requiredKeys = [
             COSMOS_PARAM_CONFIG_MODE,
             COSMOS_PARAM_SERVICE_NAME,
             COSMOS_PARAM_PREDICATE
         ]
         def isValid = true
 
-        requiredEnvKeys.forEach {
+        requiredKeys.forEach {
             if (!env.containsKey(it)) {
                 isValid = false
                 def envKey = ENV_TO_COSMOS_KEYMAP.find { v -> v.value == it }?.key
@@ -236,19 +290,24 @@ class Cosmonaut implements DockerAsyncCallback {
         if (isValid) {
             isValid = isConfigModeAllowed(env[COSMOS_PARAM_CONFIG_MODE].toString().toLowerCase())
         }
-
         return isValid
     }
 
+    /**
+     * Is CONFIG_MODE environment variable set to an allowed value?
+     * Values allowed are:
+     *  - host
+     *  - path
+     * @param mode value of CONFIG_MODE environment variable.
+     * @return boolean whether or not the mode is allowed.
+     */
     def isConfigModeAllowed(mode) {
-        def allowedConfigModeVals = ['host', 'path']
-        def allowed = allowedConfigModeVals.contains(mode)
+        def allowed = ['host', 'path'].contains(mode)
 
         if (!allowed) {
             println "ERROR Cosmonaut: '$ENV_VAR_CONFIG_MODE' environment variable has an incorrect value."
             println "ERROR Cosmonaut: Event will be ignored."
         }
-
         return allowed
     }
 
