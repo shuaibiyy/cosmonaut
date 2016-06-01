@@ -10,18 +10,20 @@ class LauncherSpec extends Specification {
 
     def "Service environments should be extractable from docker inspection content"() {
         given:
-        def configModeVal = randomAlphanumeric(7)
-        def serviceNameVal = randomAlphanumeric(7)
-        def predicateVal = randomAlphanumeric(7)
-        def cookieVal = randomAlphanumeric(7)
-        Map expectedServiceEnvMap = [configMode:configModeVal, serviceName:serviceNameVal,
-                                     predicate:predicateVal, cookie:cookieVal]
+        def configMode = randomAlphanumeric(7)
+        def serviceName = randomAlphanumeric(7)
+        def portNum = randomAlphanumeric(4)
+        def predicate = randomAlphanumeric(7)
+        def cookie = randomAlphanumeric(7)
+        Map expectedServiceEnvMap = [configMode:configMode, serviceName:serviceName,
+                                     port: portNum, predicate:predicate, cookie:cookie]
 
         def inspectionContent = someInspectionContent([
-                'CONFIG_MODE=' + configModeVal,
-                'SERVICE_NAME=' + serviceNameVal,
-                'PREDICATE=' + predicateVal,
-                'COOKIE=' + cookieVal,
+                'CONFIG_MODE=' + configMode,
+                'SERVICE_NAME=' + serviceName,
+                'PORT=' + portNum,
+                'PREDICATE=' + predicate,
+                'COOKIE=' + cookie,
                 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
         ])
 
@@ -141,6 +143,7 @@ class LauncherSpec extends Specification {
         def inspectionContent = someInspectionContent([
                 "CONFIG_MODE=host",
                 "SERVICE_NAME=${randomAlphanumeric(7)}",
+                "PORT=${randomAlphanumeric(4)}",
                 "PREDICATE=${randomAlphanumeric(7)}",
                 "COOKIE=${randomAlphanumeric(7)}",
         ])
@@ -157,6 +160,7 @@ class LauncherSpec extends Specification {
         def inspectionContent = someInspectionContent([
                 "CONFIG_MODE=${randomAlphanumeric(7)}",
                 "SERVICE_NAME=${randomAlphanumeric(7)}",
+                "PORT=${randomAlphanumeric(4)}",
                 "PREDICATE=${randomAlphanumeric(7)}",
                 "COOKIE=${randomAlphanumeric(7)}",
         ])

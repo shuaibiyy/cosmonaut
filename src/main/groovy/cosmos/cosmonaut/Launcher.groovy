@@ -37,12 +37,14 @@ class Cosmonaut implements DockerAsyncCallback {
     static final COSMOS_PARAM_SERVICE_NAME = 'serviceName'
     static final COSMOS_PARAM_PREDICATE = 'predicate'
     static final COSMOS_PARAM_COOKIE = 'cookie'
+    static final COSMOS_PARAM_PORT = 'port'
     static final ENV_VAR_CONFIG_MODE = 'CONFIG_MODE'
     static final ENV_TO_COSMOS_KEYMAP = [
         CONFIG_MODE: COSMOS_PARAM_CONFIG_MODE,
         SERVICE_NAME: COSMOS_PARAM_SERVICE_NAME,
         PREDICATE: COSMOS_PARAM_PREDICATE,
-        COOKIE: COSMOS_PARAM_COOKIE
+        COOKIE: COSMOS_PARAM_COOKIE,
+        PORT: COSMOS_PARAM_PORT
     ]
 
     @Override
@@ -275,6 +277,7 @@ class Cosmonaut implements DockerAsyncCallback {
         def requiredKeys = [
             COSMOS_PARAM_CONFIG_MODE,
             COSMOS_PARAM_SERVICE_NAME,
+            COSMOS_PARAM_PORT,
             COSMOS_PARAM_PREDICATE
         ]
         def isValid = true
