@@ -27,14 +27,18 @@ Cosmonaut uses a keyword to determine if the container tied to an event is signi
 
 1. Make sure you have a Cosmos instance running.
 2. `git clone` this repo.
-3. Set the required `DOCKER_HOST` and optional `DOCKER_CERT_PATH` environment variables. For example:
+3. Ensure Docker and Weave Net are running, and the Weave Net environment is configured, so that containers launched via the Docker command line are automatically attached to the Weave network. This is normally done by running the following commands:
+
+        $ weave launch
+        $ eval $(weave env)
+4. Set the required `DOCKER_HOST` and optional `DOCKER_CERT_PATH` environment variables. For example:
 
         $ export DOCKER_HOST="tcp://192.168.99.100:2376"
         $ export DOCKER_CERT_PATH="/Users/<user>/.docker/machine/machines/dev"
 Or:
 
         $ export DOCKER_HOST=unix:///var/run/docker.sock
-4. Run:
+5. Run:
 
         $ ./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name>
 where `cosmosUrl` is the URL of your Cosmos endpoint and `cosmosTable` is the name of the DynamoDB table Cosmos will create and use to persist the state of the cosmonaut machine's services. Cosmos uses the persisted state to ensure the HAProxy config data for running services can be reproduced. Also, you can pass in a [keyword](#keyword) by running:
@@ -56,13 +60,13 @@ Note that Cosmonaut requires Weave to be used as an overlay network on the host,
 
 ### Environment Variables
 
-* CONFIG_MODE: type of routing. It can be either `path` or `host`.
-        1. In `path` mode, the URL path is used to determine which backend to forward the request to.
-        2. In `host` mode, the HTTP host header is used to determine which backend to forward the request to.
+* __CONFIG_MODE__: type of routing. It can be either `path` or `host`.
+        [1] In `path` mode, the URL path is used to determine which backend to forward the request to.
+        [2] In `host` mode, the HTTP host header is used to determine which backend to forward the request to.
         Defaults to `host` mode.
-* SERVICE_NAME: name of service the container belongs to.
-* PREDICATE: value used along with mode to determine which service a request will be forwarded to.
-        1. `path` mode example: `acl <cluster> url_beg /<predicate>`.
-        2. `host` mode example: `acl <cluster> hdr(host) -i <predicate>`.
-* COOKIE: name of cookie to be used for sticky sessions. If not defined, sticky sessions will not be configured.
-* PORT: port number where the service on the container is listening on.
+* __SERVICE_NAME__: name of service the container belongs to.
+* __PREDICATE__: value used along with mode to determine which service a request will be forwarded to.
+        [1] `path` mode example: `acl <cluster> url_beg /<predicate>`.
+        [2] `host` mode example: `acl <cluster> hdr(host) -i <predicate>`.
+* __COOKIE__: name of cookie to be used for sticky sessions. If not defined, sticky sessions will not be configured.
+* __PORT__: port number where the service on the container is listening on.
