@@ -23,7 +23,8 @@ if (args[3].isEmpty()) {
     keyword = args[3]
 }
 
-System.setProperty('docker.cert.path', System.getenv('DOCKER_CERT_PATH'))
+def certPath = System.getenv('DOCKER_CERT_PATH') ? System.getenv('DOCKER_CERT_PATH') : ''
+System.setProperty('docker.cert.path', certPath)
 
 class Cosmonaut implements DockerAsyncCallback {
     def dockerClient
@@ -74,7 +75,12 @@ class Cosmonaut implements DockerAsyncCallback {
         if (eventType != 'container'
             || (containerName && !containerName.toString().toLowerCase().contains(keyword))
             || uninterestedStatuses.contains(eventStatus)) {
-            println "INFO Cosmonaut: No action will be taken for event received."
+            if (System.getenv('COSMONAUT_LOG') && System.getenv('COSMONAUT_LOG').toLowerCase() == 'debug') {
+                println "DEBUG Cosmonaut: No action will be taken for event received."
+                println "DEBUG Cosmonaut: --- Event:"
+                println "DEBUG Cosmonaut: ${object}"
+                println "DEBUG Cosmonaut: ---"
+            }
             return false
         }
         return true
@@ -94,11 +100,7 @@ class Cosmonaut implements DockerAsyncCallback {
         def containerId = object?.id
         def inspectionContent = inspectContainer(containerId)?.content
 
-        if (!inspectionContent) {
-            return
-        }
-
-        if (!isContainerEnvValid(inspectionContent, containerId)) {
+        if (!inspectionContent || !isContainerEnvValid(inspectionContent, containerId)) {
             return
         }
 
@@ -121,7 +123,7 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return void
      */
     def waitForWeaveToRegisterEvent() {
-        sleep 1000
+        sleep 3000
     }
 
     /**
@@ -172,6 +174,10 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return String string of weave dns entries.
      */
     def weaveDnsEntries() {
+        /**
+         * TODO:
+         *  - Safeguard against when weave fails with 0 entries.
+         */
         return 'weave status dns'.execute().text
     }
 
@@ -282,7 +288,7 @@ class Cosmonaut implements DockerAsyncCallback {
         ]
         def isValid = true
 
-        requiredKeys.forEach {
+        requiredKeys.each {
             if (!env.containsKey(it)) {
                 isValid = false
                 def envKey = ENV_TO_COSMOS_KEYMAP.find { v -> v.value == it }?.key

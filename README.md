@@ -12,7 +12,7 @@ When Cosmonaut is run on a machine, it does the following:
 
 ## Requirements
 
-1. [Docker](https://www.docker.com/).
+1. [Docker 1.11 or higher](https://www.docker.com/).
 2. [Weave Net](https://www.weave.works/products/weave-net/): monitored containers must belong to a weave network.
 3. Java 7 or higher.
 4. HAProxy: I use [rstiller/haproxy](https://github.com/rstiller/dockerfiles/tree/master/haproxy). If you are using a different HAProxy, be sure to update the config reload strategy in `scripts/update_haproxy.sh`.
@@ -44,6 +44,12 @@ Or:
 where `cosmosUrl` is the URL of your Cosmos endpoint and `cosmosTable` is the name of the DynamoDB table Cosmos will create and use to persist the state of the cosmonaut machine's services. Cosmos uses the persisted state to ensure the HAProxy config data for running services can be reproduced. Also, you can pass in a [keyword](#keyword) by running:
 
         $ ./gradlew -PcosmosUrl=<url> -PcosmosTable=<table_name> -Pkeyword=<keyword_value>
+        
+### Debugging
+
+To enable debug logging, set the environment variable `COSMONAUT_LOG` to `debug` before starting Cosmonaut, e.g.
+
+        $ export COMSONAUT_LOG=debug
 
 ## Usage
 
