@@ -28,7 +28,7 @@ class LauncherSpec extends Specification {
         ])
 
         when:
-        def serviceEnvMap = new Cosmonaut(dockerClient: dockerClient).serviceEnvMap(inspectionContent)
+        def serviceEnvMap = new Cosmonaut(dockerClient: dockerClient).serviceEnv(inspectionContent)
 
         then:
         serviceEnvMap == expectedServiceEnvMap
@@ -44,7 +44,7 @@ class LauncherSpec extends Specification {
         def expectedContainerMapArray = [containers:[[id: containerId, ip: ipAddress]]]
 
         when:
-        def containerMapArray = new Cosmonaut(dockerClient: dockerClient).containerMapArr(inspectionContent, dnsEntries)
+        def containerMapArray = new Cosmonaut(dockerClient: dockerClient).serviceContainers(inspectionContent, dnsEntries)
 
         then:
         containerMapArray == expectedContainerMapArray

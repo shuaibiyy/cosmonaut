@@ -1,4 +1,5 @@
 package cosmos.cosmonaut
+
 import de.gesellix.docker.client.DockerAsyncCallback
 import de.gesellix.docker.client.DockerClientImpl
 import groovy.json.JsonOutput
@@ -11,11 +12,11 @@ if (args[1].isEmpty() || args[2].isEmpty()) {
     System.exit(2)
 }
 
-def scriptsDir = args[0]
-def cosmosUrl = args[1]
-def cosmosTable = args[2]
+String scriptsDir = args[0]
+String cosmosUrl = args[1]
+String cosmosTable = args[2]
 
-def keyword = 'asteroid'
+String keyword = 'asteroid'
 if (args[3].isEmpty()) {
     println "INFO Cosmonaut: keyword property not supplied."
     println "INFO Cosmonaut: keyword defaulting to '$keyword'."
@@ -23,16 +24,16 @@ if (args[3].isEmpty()) {
     keyword = args[3]
 }
 
-def certPath = System.getenv('DOCKER_CERT_PATH') ? System.getenv('DOCKER_CERT_PATH') : ''
+String certPath = System.getenv('DOCKER_CERT_PATH') ? System.getenv('DOCKER_CERT_PATH') : ''
 System.setProperty('docker.cert.path', certPath)
 
 class Cosmonaut implements DockerAsyncCallback {
-    def dockerClient
-    def cosmosUrl
-    def cosmosTable
-    def scriptsDir
+    String dockerClient
+    String cosmosUrl
+    String cosmosTable
+    String scriptsDir
     String keyword
-    def events = []
+    List events = []
 
     static final COSMOS_PARAM_CONFIG_MODE = 'configMode'
     static final COSMOS_PARAM_SERVICE_NAME = 'serviceName'
@@ -114,7 +115,7 @@ class Cosmonaut implements DockerAsyncCallback {
                 stopEvent()
                 break
             default:
-                return noOp()
+                noOp()
         }
     }
 
@@ -140,7 +141,7 @@ class Cosmonaut implements DockerAsyncCallback {
             println "ERROR Cosmonaut: Event will be ignored."
             println "ERROR Cosmonaut: ${e.getMessage()}"
         }
-        return content
+        content
     }
 
     def updateHAProxy(payload) {
@@ -162,11 +163,11 @@ class Cosmonaut implements DockerAsyncCallback {
 
     def startEventPayload(inspectionContent) {
         def dnsEntries = weaveDnsEntries()
-        return [table: cosmosTable] + runningServices(dnsEntries) + candidateService(inspectionContent, dnsEntries)
+        [table: cosmosTable] + runningServices(dnsEntries) + candidateService(inspectionContent, dnsEntries)
     }
 
     def stopEventPayload() {
-        return [table: cosmosTable] + runningServices(weaveDnsEntries())
+        [table: cosmosTable] + runningServices(weaveDnsEntries())
     }
 
     /**
@@ -178,7 +179,7 @@ class Cosmonaut implements DockerAsyncCallback {
          * TODO:
          *  - Safeguard against when weave fails with 0 entries.
          */
-        return 'weave status dns'.execute().text
+        'weave status dns'.execute().text
     }
 
     /**
@@ -188,9 +189,8 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return String ip address.
      */
     def findContainerWeaveIp(containerId, String dnsEntries) {
-        def mapArr = servicesFromDns(dnsEntries)
-        def ip = mapArr.findAll { it['id'] == containerId }.first().ip
-        return ip
+        List<Map<String, String>> services = servicesFromDns(dnsEntries)
+        services.findAll { it['id'] == containerId }.first().ip
     }
 
     /**
@@ -199,7 +199,7 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return Map single-valued map of array of running services.
      */
     def runningServices(String dnsEntries) {
-        return [running: servicesFromDns(dnsEntries)]
+        [running: servicesFromDns(dnsEntries)]
     }
 
     /**
@@ -208,12 +208,12 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return Array array of maps of services.
      */
     def servicesFromDns(String dnsEntries) {
-        def entriesArr = dnsEntries.split('\\r?\\n')
-        def arr = entriesArr.collect { entry ->
-            def tokens = entry.tokenize()
+        String[] entries = dnsEntries.split('\\r?\\n')
+        List<Map<String, String>> services = entries.collect { entry ->
+            String[] tokens = entry.tokenize()
             return [serviceName: tokens[0], id: tokens[2], ip: tokens[1]]
         }
-        return arr
+        services
     }
 
     /**
@@ -224,10 +224,9 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return Map map of array of services.
      */
     def candidateService(inspectionContent, String dnsEntries) {
-        def mapArr = containerMapArr(inspectionContent, dnsEntries)
-        def serviceEnvMap = serviceEnvMap(inspectionContent)
-        Map serviceAttrs = serviceEnvMap + mapArr
-        return [candidates: [serviceAttrs]]
+        Map<String, List<Map<String, Object>>> containers = serviceContainers(inspectionContent, dnsEntries)
+        Map<String, String> containerEnv = serviceEnv(inspectionContent)
+        [candidates: [containerEnv + containers]]
     }
 
     /**
@@ -236,10 +235,10 @@ class Cosmonaut implements DockerAsyncCallback {
      * @param dnsEntries
      * @return Map map of array of containers.
      */
-    def containerMapArr(inspectionContent, String dnsEntries) {
-        def containerId = shortenContainerId(inspectionContent.Id)
-        def ipAddress = findContainerWeaveIp(containerId, dnsEntries)
-        return [containers: [[id: containerId, ip: ipAddress]]]
+    def serviceContainers(inspectionContent, String dnsEntries) {
+        String containerId = shortenContainerId(inspectionContent.Id)
+        String ipAddress = findContainerWeaveIp(containerId, dnsEntries)
+        [containers: [[id: containerId, ip: ipAddress]]]
     }
 
     /**
@@ -248,7 +247,7 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return String
      */
     def shortenContainerId(id) {
-        return id.substring(0, 12)
+        id.substring(0, 12)
     }
 
     /**
@@ -257,19 +256,19 @@ class Cosmonaut implements DockerAsyncCallback {
      * @param inspectionContent result of `docker inspect` command.
      * @return Map map of environment variables formatted for Cosmos payload.
      */
-    def serviceEnvMap(inspectionContent) {
-        def env = inspectionContent.Config.Env
+    def serviceEnv(inspectionContent) {
+        def containerEnv = inspectionContent.Config.Env
 
-        def envTuples = env.collect {
+        List<Tuple2> tuples = containerEnv.collect {
             def (key, val) = it.tokenize('=')
             return new Tuple2(key, val)
         }
 
-        def envMap = envTuples
+        Map<String, String> env = tuples
                 .collectEntries { tuple -> [tuple.first, tuple.second] }
                 .findAll { entry -> ENV_TO_COSMOS_KEYMAP.keySet().contains entry.key }
-                .collectEntries { k, v -> [ENV_TO_COSMOS_KEYMAP.get(k), v] }
-        return envMap
+                .collectEntries { k, v -> [ENV_TO_COSMOS_KEYMAP.get(k), v] } as Map<String, String>
+        return env
     }
 
     /**
@@ -279,7 +278,7 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return boolean whether or not the environment variables are valid.
      */
     def isContainerEnvValid(content, containerId) {
-        def env = serviceEnvMap(content)
+        def env = serviceEnv(content)
         def requiredKeys = [
             COSMOS_PARAM_CONFIG_MODE,
             COSMOS_PARAM_SERVICE_NAME,
