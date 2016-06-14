@@ -1,6 +1,7 @@
 package cosmos.cosmonaut
 
 import de.gesellix.docker.client.DockerAsyncCallback
+import de.gesellix.docker.client.DockerClient
 import de.gesellix.docker.client.DockerClientImpl
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
@@ -28,7 +29,7 @@ String certPath = System.getenv('DOCKER_CERT_PATH') ? System.getenv('DOCKER_CERT
 System.setProperty('docker.cert.path', certPath)
 
 class Cosmonaut implements DockerAsyncCallback {
-    String dockerClient
+    DockerClient dockerClient
     String cosmosUrl
     String cosmosTable
     String scriptsDir
@@ -97,22 +98,25 @@ class Cosmonaut implements DockerAsyncCallback {
 
         println event
 
-        def eventStatus = object?.status
-        def containerId = object?.id
+        String eventStatus = object?.status
+        String containerId = object?.id
         def inspectionContent = inspectContainer(containerId)?.content
 
-        if (!inspectionContent || !isContainerEnvValid(inspectionContent, containerId)) {
+        waitForDnsToRegisterEvent()
+        String dnsEntries = weaveDnsEntries()
+
+        if (!inspectionContent
+                || !isContainerEnvValid(inspectionContent, containerId)
+                || !isContainerInDns(dnsEntries, shortenContainerId(containerId))) {
             return
         }
 
-        waitForWeaveToRegisterEvent()
-
         switch(eventStatus) {
             case 'start':
-                startEvent(inspectionContent)
+                startEvent(inspectionContent, dnsEntries)
                 break
             case ['stop']:
-                stopEvent()
+                stopEvent(dnsEntries)
                 break
             default:
                 noOp()
@@ -120,10 +124,10 @@ class Cosmonaut implements DockerAsyncCallback {
     }
 
     /**
-     * When a container is started, weave needs some time to configure the network.
+     * When a container is started, weave dns needs some time to configure the network.
      * @return void
      */
-    def waitForWeaveToRegisterEvent() {
+    def waitForDnsToRegisterEvent() {
         sleep 3000
     }
 
@@ -151,23 +155,26 @@ class Cosmonaut implements DockerAsyncCallback {
         process.waitForProcessOutput((OutputStream)System.out, System.err)
     }
 
-    def startEvent(inspectionContent) {
-        updateHAProxy(startEventPayload(inspectionContent))
+    def startEvent(inspectionContent, String dnsEntries) {
+        updateHAProxy(startEventPayload(inspectionContent, dnsEntries))
     }
 
-    def stopEvent() {
-        updateHAProxy(stopEventPayload())
+    def stopEvent(String dnsEntries) {
+        updateHAProxy(stopEventPayload(dnsEntries))
     }
 
     def noOp() {}
 
-    def startEventPayload(inspectionContent) {
-        def dnsEntries = weaveDnsEntries()
+    def startEventPayload(inspectionContent, String dnsEntries) {
         [table: cosmosTable] + runningServices(dnsEntries) + candidateService(inspectionContent, dnsEntries)
     }
 
-    def stopEventPayload() {
-        [table: cosmosTable] + runningServices(weaveDnsEntries())
+    def stopEventPayload(String dnsEntries) {
+        [table: cosmosTable] + runningServices(dnsEntries)
+    }
+
+    def isContainerInDns(String entries, String id) {
+        entries.contains(id)
     }
 
     /**
@@ -175,10 +182,6 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return String string of weave dns entries.
      */
     def weaveDnsEntries() {
-        /**
-         * TODO:
-         *  - Safeguard against when weave fails with 0 entries.
-         */
         'weave status dns'.execute().text
     }
 
@@ -236,7 +239,7 @@ class Cosmonaut implements DockerAsyncCallback {
      * @return Map map of array of containers.
      */
     def serviceContainers(inspectionContent, String dnsEntries) {
-        String containerId = shortenContainerId(inspectionContent.Id)
+        String containerId = shortenContainerId(inspectionContent.Id.toString())
         String ipAddress = findContainerWeaveIp(containerId, dnsEntries)
         [containers: [[id: containerId, ip: ipAddress]]]
     }
@@ -246,7 +249,7 @@ class Cosmonaut implements DockerAsyncCallback {
      * @param id container id
      * @return String
      */
-    def shortenContainerId(id) {
+    def shortenContainerId(String id) {
         id.substring(0, 12)
     }
 
